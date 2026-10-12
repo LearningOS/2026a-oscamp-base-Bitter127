@@ -27,7 +27,10 @@
 pub unsafe extern "C" fn my_memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     // TODO: Implement memcpy
     // Hint: read bytes from src one by one and write to dst
-    todo!()
+    for offset in 0..n {
+        unsafe { *dst.add(offset) = *src.add(offset) };
+    }
+    dst
 }
 
 /// Set `n` bytes starting at `dst` to the value `c`.
@@ -39,7 +42,10 @@ pub unsafe extern "C" fn my_memcpy(dst: *mut u8, src: *const u8, n: usize) -> *m
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_memset(dst: *mut u8, c: u8, n: usize) -> *mut u8 {
     // TODO: Implement memset
-    todo!()
+    for offset in 0..n {
+        unsafe { *dst.add(offset) = c };
+    }
+    dst
 }
 
 /// Copy `n` bytes from `src` to `dst`, correctly handling overlapping memory.
@@ -52,7 +58,18 @@ pub unsafe extern "C" fn my_memset(dst: *mut u8, c: u8, n: usize) -> *mut u8 {
 pub unsafe extern "C" fn my_memmove(dst: *mut u8, src: *const u8, n: usize) -> *mut u8 {
     // TODO: Implement memmove
     // Hint: when dst > src and regions overlap, copy backwards (from end to start)
-    todo!()
+    let dst_addr = dst as usize;
+    let src_addr = src as usize;
+    if dst_addr > src_addr && dst_addr - src_addr < n {
+        for offset in (0..n).rev() {
+            unsafe { *dst.add(offset) = *src.add(offset) };
+        }
+    } else {
+        for offset in 0..n {
+            unsafe { *dst.add(offset) = *src.add(offset) };
+        }
+    }
+    dst
 }
 
 /// Return the length of a null-terminated byte string, excluding the trailing null.
@@ -62,7 +79,11 @@ pub unsafe extern "C" fn my_memmove(dst: *mut u8, src: *const u8, n: usize) -> *
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_strlen(s: *const u8) -> usize {
     // TODO: Implement strlen
-    todo!()
+    let mut length = 0;
+    while unsafe { *s.add(length) } != 0 {
+        length += 1;
+    }
+    length
 }
 
 /// Compare two null-terminated byte strings.
@@ -77,7 +98,15 @@ pub unsafe extern "C" fn my_strlen(s: *const u8) -> usize {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_strcmp(s1: *const u8, s2: *const u8) -> i32 {
     // TODO: Implement strcmp
-    todo!()
+    let mut offset = 0;
+    loop {
+        let left = unsafe { *s1.add(offset) };
+        let right = unsafe { *s2.add(offset) };
+        if left != right || left == 0 {
+            return left as i32 - right as i32;
+        }
+        offset += 1;
+    }
 }
 
 // ============================================================

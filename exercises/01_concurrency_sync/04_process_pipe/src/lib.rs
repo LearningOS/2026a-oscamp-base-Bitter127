@@ -32,7 +32,30 @@
 //! Run `cargo test` to check your implementations.
 
 use std::io::{self, Read, Write};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
+
+fn command_output(program: &str, args: &[&str]) -> io::Result<Output> {
+    #[cfg(windows)]
+    if program.eq_ignore_ascii_case("echo") {
+        let no_newline = args.first() == Some(&"-n");
+        let text = args[usize::from(no_newline)..].join(" ");
+        let script = if no_newline {
+            "[Console]::Out.Write($env:OSCAMP_ECHO_TEXT)"
+        } else {
+            "[Console]::Out.WriteLine($env:OSCAMP_ECHO_TEXT)"
+        };
+        return Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .env("OSCAMP_ECHO_TEXT", text)
+            .stdout(Stdio::piped())
+            .output();
+    }
+
+    Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .output()
+}
 
 /// Execute the given shell command and return its stdout output.
 ///
@@ -53,7 +76,8 @@ pub fn run_command(program: &str, args: &[&str]) -> String {
     // TODO: Set stdout to Stdio::piped()
     // TODO: Execute with .output() and get output
     // TODO: Convert stdout to String and return
-    todo!()
+    let output = command_output(program, args).unwrap();
+    String::from_utf8(output.stdout).unwrap()
 }
 
 /// Write data to child process (cat) stdin via pipe and read its stdout output.
@@ -89,7 +113,37 @@ pub fn pipe_through_cat(input: &str) -> String {
     // TODO: Write input to child process stdin
     // TODO: Drop stdin to close pipe (otherwise cat won't exit)
     // TODO: Read output from child process stdout
-    todo!()
+    #[cfg(windows)]
+    let program = "more.com";
+    #[cfg(not(windows))]
+    let program = "cat";
+
+    let mut child = Command::new(program)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    stdin.write_all(input.as_bytes()).unwrap();
+    drop(stdin);
+
+    let mut output = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut output)
+        .unwrap();
+    child.wait().unwrap();
+    #[cfg(windows)]
+    let output = {
+        let mut output = output.replace("\r\n", "\n");
+        if !input.ends_with('\n') && output.ends_with('\n') {
+            output.pop();
+        }
+        output
+    };
+    output
 }
 
 /// Get child process exit code.
@@ -110,7 +164,22 @@ pub fn get_exit_code(command: &str) -> i32 {
     // TODO: Use Command::new("sh").args(["-c", command])
     // TODO: Execute and get status
     // TODO: Return exit code
-    todo!()
+    #[cfg(windows)]
+    let status = {
+        let command = match command.trim() {
+            "true" => "exit /b 0",
+            "false" => "exit /b 1",
+            other => other,
+        };
+        Command::new("cmd.exe")
+            .args(["/D", "/S", "/C", command])
+            .status()
+            .unwrap()
+    };
+    #[cfg(not(windows))]
+    let status = Command::new("sh").args(["-c", command]).status().unwrap();
+
+    status.code().unwrap_or(-1)
 }
 
 /// Execute the given shell command and return its stdout output as a `Result`.
@@ -137,7 +206,9 @@ pub fn run_command_with_result(program: &str, args: &[&str]) -> io::Result<Strin
     // TODO: Set stdout to Stdio::piped()
     // TODO: Execute with .output() and handle Result
     // TODO: Convert stdout to String with from_utf8, mapping errors to io::Error
-    todo!()
+    let output = command_output(program, args)?;
+    String::from_utf8(output.stdout)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 /// Interact with `grep` via bidirectional pipes, filtering lines that contain a pattern.
@@ -167,7 +238,38 @@ pub fn pipe_through_grep(pattern: &str, input: &str) -> String {
     // TODO: Drop stdin to close pipe
     // TODO: Read output from child stdout line by line
     // TODO: Collect and return matching lines
-    todo!()
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = Command::new("findstr.exe");
+        command.arg(format!("/C:{pattern}"));
+        command
+    };
+    #[cfg(not(windows))]
+    let mut command = {
+        let mut command = Command::new("grep");
+        command.arg(pattern);
+        command
+    };
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    stdin.write_all(input.as_bytes()).unwrap();
+    drop(stdin);
+
+    let mut output = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut output)
+        .unwrap();
+    child.wait().unwrap();
+    #[cfg(windows)]
+    let output = output.replace("\r\n", "\n");
+    output
 }
 
 #[cfg(test)]

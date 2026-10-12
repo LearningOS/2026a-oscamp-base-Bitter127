@@ -40,7 +40,8 @@ impl FlagChannel {
     pub fn produce(&self, value: u32) {
         // TODO: Store data (choose appropriate Ordering)
         // TODO: Set ready = true (choose appropriate Ordering so data writes complete before this)
-        todo!()
+        self.data.store(value, Ordering::Relaxed);
+        self.ready.store(true, Ordering::Release);
     }
 
     /// Consumer: spin-wait for ready flag, then read data.
@@ -51,7 +52,10 @@ impl FlagChannel {
     pub fn consume(&self) -> u32 {
         // TODO: Spin-wait for ready to become true (choose appropriate Ordering)
         // TODO: Read data (choose appropriate Ordering)
-        todo!()
+        while !self.ready.load(Ordering::Acquire) {
+            std::hint::spin_loop();
+        }
+        self.data.load(Ordering::Relaxed)
     }
 
     /// Reset channel state
@@ -61,10 +65,17 @@ impl FlagChannel {
     }
 }
 
+impl Default for FlagChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A simple once-initializer using SeqCst.
 /// Guarantees `init` is executed only once, and all threads see the initialized value.
 pub struct OnceCell {
     initialized: AtomicBool,
+    ready: AtomicBool,
     value: AtomicU32,
 }
 
@@ -72,6 +83,7 @@ impl OnceCell {
     pub const fn new() -> Self {
         Self {
             initialized: AtomicBool::new(false),
+            ready: AtomicBool::new(false),
             value: AtomicU32::new(0),
         }
     }
@@ -83,13 +95,31 @@ impl OnceCell {
     pub fn init(&self, val: u32) -> bool {
         // TODO: Use compare_exchange to ensure initialization only once
         // Store value on success
-        todo!()
+        if self
+            .initialized
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+
+        self.value.store(val, Ordering::Relaxed);
+        self.ready.store(true, Ordering::Release);
+        true
     }
 
     /// Get value. Returns Some if initialized, otherwise None.
     pub fn get(&self) -> Option<u32> {
         // TODO: Check initialized flag, then read value
-        todo!()
+        self.ready
+            .load(Ordering::Acquire)
+            .then(|| self.value.load(Ordering::Relaxed))
+    }
+}
+
+impl Default for OnceCell {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
